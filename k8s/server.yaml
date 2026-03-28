@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbtd-server
+  namespace: sbtd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sbtd-server
+  template:
+    metadata:
+      labels:
+        app: sbtd-server
+    spec:
+      containers:
+        - name: sbtd-server
+          image: sbtd-server:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 2567
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "2567"
+            - name: DATABASE_URL
+              value: postgresql://sbtd:sbtd_dev_password@sbtd-postgres:5432/sbtd
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 2567
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 2567
+            initialDelaySeconds: 15
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sbtd-server
+  namespace: sbtd
+spec:
+  selector:
+    app: sbtd-server
+  ports:
+    - port: 2567
+      targetPort: 2567
+  type: ClusterIP
