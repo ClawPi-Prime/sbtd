@@ -1,0 +1,13 @@
+{
+  "id": "alpha",
+  "name": "The Divide",
+  "cols": 12,
+  "rows": 20,
+  "lanes": [
+    { "id": "left", "col": 3 },
+    { "id": "right", "col": 8 }
+  ],
+  "spawnRow": 0,
+  "exitRow": 19,
+  "buildRows": { "start": 1, "end": 18 }
+}

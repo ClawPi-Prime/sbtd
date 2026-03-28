@@ -10,7 +10,10 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "strict": true
+    "strict": true,
+    "paths": {
+      "@sbtd/shared": ["../shared/src/index.ts"]
+    }
   },
   "include": ["src"]
 }

@@ -4,7 +4,8 @@ import { Server } from 'colyseus';
 import { monitor } from '@colyseus/monitor';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { LobbyRoom } from './LobbyRoom';
+import { LobbyRoom } from './rooms/LobbyRoom';
+import { GameRoom } from './rooms/GameRoom';
 
 const PORT = Number(process.env.PORT) || 2567;
 
@@ -16,7 +17,7 @@ app.use(express.json());
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 100,
 });
 app.use(limiter);
@@ -39,6 +40,7 @@ const gameServer = new Server({
 
 // Register rooms
 gameServer.define('lobby', LobbyRoom);
+gameServer.define('game_room', GameRoom);
 
 // Start
 gameServer.listen(PORT).then(() => {

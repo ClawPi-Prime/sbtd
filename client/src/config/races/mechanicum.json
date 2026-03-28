@@ -1,0 +1,103 @@
+{
+  "id": "mechanicum",
+  "name": "Clockwork Mechanicum",
+  "units": {
+    "sawboy": {
+      "label": "Sawboy",
+      "cost": 12,
+      "hp": 55,
+      "dmg": 14,
+      "armor": 0,
+      "range": 1.2,
+      "atkSpeed": 2.0,
+      "moveSpeed": 3.0,
+      "color": "#c8c8c8"
+    },
+    "clapper": {
+      "label": "Clapper",
+      "cost": 25,
+      "hp": 80,
+      "dmg": 28,
+      "armor": 1,
+      "range": 2.5,
+      "atkSpeed": 0.8,
+      "moveSpeed": 1.5,
+      "color": "#889898"
+    },
+    "screwdriver": {
+      "label": "Screwdriver",
+      "cost": 15,
+      "hp": 60,
+      "dmg": 7,
+      "armor": 0,
+      "range": 3.0,
+      "atkSpeed": 2.0,
+      "moveSpeed": 0.8,
+      "color": "#b8d8e8"
+    },
+    "boomba": {
+      "label": "Boomba",
+      "cost": 30,
+      "hp": 60,
+      "dmg": 0,
+      "armor": 0,
+      "range": 1.0,
+      "atkSpeed": 1.0,
+      "moveSpeed": 1.5,
+      "color": "#e8c858",
+      "special": "suicide",
+      "splashRadius": 2.5,
+      "splashDmgRatio": 1.0
+    },
+    "nano_cloud": {
+      "label": "Nano Cloud",
+      "cost": 40,
+      "hp": 50,
+      "dmg": 0,
+      "armor": 0,
+      "range": 2.0,
+      "atkSpeed": 0.0,
+      "moveSpeed": 0.5,
+      "color": "#a8e8f8",
+      "special": "healcloud",
+      "healPerSecond": 15
+    },
+    "metal_onion": {
+      "label": "Metal Onion",
+      "cost": 45,
+      "hp": 300,
+      "dmg": 12,
+      "armor": 5,
+      "range": 1.2,
+      "atkSpeed": 0.4,
+      "moveSpeed": 0.6,
+      "color": "#788878"
+    },
+    "acid_spider": {
+      "label": "Acid Spider",
+      "cost": 30,
+      "hp": 75,
+      "dmg": 22,
+      "armor": 0,
+      "range": 1.8,
+      "atkSpeed": 1.2,
+      "moveSpeed": 2.0,
+      "color": "#a8e858",
+      "special": "flame"
+    },
+    "tesla_coil": {
+      "label": "Tesla Coil",
+      "cost": 60,
+      "hp": 60,
+      "dmg": 35,
+      "armor": 0,
+      "range": 4.0,
+      "atkSpeed": 0.4,
+      "moveSpeed": 0.0,
+      "color": "#d8d8f8",
+      "special": "chain_lightning",
+      "chainTargets": 3,
+      "immobile": true
+    }
+  }
+}
