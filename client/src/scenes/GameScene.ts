@@ -27,9 +27,23 @@ interface UnitSnap {
   type: string;
   col: number;
   row: number;
+  x: number;
+  y: number;
   hp: number;
   maxHp: number;
   alive: boolean;
+  attackType: string;
+  armorType: string;
+  listen: (field: string, cb: (value: unknown, prev: unknown) => void) => void;
+}
+
+interface EnemyVisual {
+  container: Phaser.GameObjects.Container;
+  hpFill: Phaser.GameObjects.Rectangle;
+  hpBg: Phaser.GameObjects.Rectangle;
+  serverX: number;
+  serverY: number;
+  maxHp: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -51,12 +65,14 @@ export class GameScene extends Phaser.Scene {
   // Unit display objects
   private myUnitObjects: Map<string, Phaser.GameObjects.Container> = new Map();
   private oppUnitObjects: Map<string, Phaser.GameObjects.Container> = new Map();
+  private enemyObjects: Map<string, EnemyVisual> = new Map();
 
   // HUD elements
   private goldText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
   private phaseText!: Phaser.GameObjects.Text;
   private timerText!: Phaser.GameObjects.Text;
+  private kingHpText!: Phaser.GameObjects.Text;
   private unitBar!: Phaser.GameObjects.Container;
   private statusText!: Phaser.GameObjects.Text;
 
@@ -93,6 +109,16 @@ export class GameScene extends Phaser.Scene {
 
     // Connect
     this.connectToGame();
+  }
+
+  update(_time: number, _delta: number): void {
+    // Interpolate enemy positions
+    this.enemyObjects.forEach((ev) => {
+      const targetPx = MAP_OFFSET_X_LEFT + ev.serverX * CELL + CELL / 2;
+      const targetPy = MAP_OFFSET_Y + ev.serverY * CELL + CELL / 2;
+      ev.container.x += (targetPx - ev.container.x) * 0.3;
+      ev.container.y += (targetPy - ev.container.y) * 0.3;
+    });
   }
 
   private drawGrid(ox: number, oy: number, interactive: boolean): void {
@@ -135,13 +161,11 @@ export class GameScene extends Phaser.Scene {
     // Lane indicators (small arrows)
     MAP.lanes.forEach((lane: { id: string; col: number }) => {
       const lx = ox + lane.col * CELL + CELL / 2;
-      // Draw arrow markers every few rows
       for (let r = 2; r < MAP.rows - 2; r += 3) {
         const ly = oy + r * CELL + CELL / 2;
         g.fillStyle(0xffffff, 0.15);
         g.fillTriangle(lx, ly - 5, lx + 5, ly + 5, lx - 5, ly + 5);
       }
-      // Lane column highlight
       g.fillStyle(0xffffff, 0.05);
       g.fillRect(ox + lane.col * CELL, oy, CELL, MAP.rows * CELL);
     });
@@ -190,8 +214,13 @@ export class GameScene extends Phaser.Scene {
     const hudY = MAP_OFFSET_Y + MAP.rows * CELL + 8;
 
     // Gold
-    this.goldText = this.add.text(MAP_OFFSET_X_LEFT, hudY, '💰 Gold: 100', {
+    this.goldText = this.add.text(MAP_OFFSET_X_LEFT, hudY, 'Gold: 100', {
       fontFamily: 'monospace', fontSize: '14px', color: '#ffdd00',
+    });
+
+    // King HP
+    this.kingHpText = this.add.text(MAP_OFFSET_X_LEFT + 100, hudY, 'HP: 100', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#ff4444',
     });
 
     // Wave
@@ -223,7 +252,7 @@ export class GameScene extends Phaser.Scene {
     voteBg.on('pointerout', () => voteBg.setFillStyle(0x223322));
     voteBg.on('pointerup', () => {
       this.room?.send('game:voteStart', {});
-      voteText.setText('Voted ✓');
+      voteText.setText('Voted');
     });
 
     // Unit bar
@@ -280,7 +309,6 @@ export class GameScene extends Phaser.Scene {
     maxHp: number,
     ox: number,
   ): void {
-    // Remove old if exists
     if (objects.has(unitId)) {
       objects.get(unitId)!.destroy();
     }
@@ -290,7 +318,6 @@ export class GameScene extends Phaser.Scene {
 
     const container = this.add.container(px, py);
 
-    // Unit sprite (colored rect)
     const sprite = this.add.image(0, 0, `unit_${unitType}`);
     sprite.setDisplaySize(CELL - 4, CELL - 4);
     container.add(sprite);
@@ -311,6 +338,75 @@ export class GameScene extends Phaser.Scene {
     container.add(hpFill);
 
     objects.set(unitId, container);
+  }
+
+  private updateUnitHpBar(container: Phaser.GameObjects.Container, hp: number, maxHp: number): void {
+    // HP bar fill is the 3rd child (index 2)
+    const hpFill = container.getAt(2) as Phaser.GameObjects.Rectangle;
+    if (!hpFill) return;
+    const hpRatio = maxHp > 0 ? Math.max(0, hp / maxHp) : 0;
+    const barWidth = CELL - 4;
+    hpFill.width = barWidth * hpRatio;
+    hpFill.x = -(barWidth / 2) * (1 - hpRatio);
+    // Color: green → yellow → red
+    if (hpRatio > 0.5) hpFill.setFillStyle(0x00ff44);
+    else if (hpRatio > 0.25) hpFill.setFillStyle(0xffdd00);
+    else hpFill.setFillStyle(0xff2200);
+  }
+
+  private addEnemyVisual(enemyId: string, unit: UnitSnap): void {
+    const px = MAP_OFFSET_X_LEFT + unit.x * CELL + CELL / 2;
+    const py = MAP_OFFSET_Y + unit.y * CELL + CELL / 2;
+
+    const container = this.add.container(px, py);
+
+    // Enemy sprite: small red rectangle
+    const sprite = this.add.rectangle(0, 0, CELL - 6, CELL - 6, 0xcc2222);
+    container.add(sprite);
+
+    // HP bar bg
+    const hpBg = this.add.rectangle(0, -(CELL / 2) + 1, CELL - 4, 3, 0x330000);
+    container.add(hpBg);
+
+    // HP bar fill
+    const hpRatio = unit.maxHp > 0 ? unit.hp / unit.maxHp : 1;
+    const hpFill = this.add.rectangle(
+      -((CELL - 4) / 2) * (1 - hpRatio),
+      -(CELL / 2) + 1,
+      (CELL - 4) * hpRatio,
+      3,
+      0xff4444,
+    );
+    container.add(hpFill);
+
+    this.enemyObjects.set(enemyId, {
+      container,
+      hpFill,
+      hpBg,
+      serverX: unit.x,
+      serverY: unit.y,
+      maxHp: unit.maxHp,
+    });
+  }
+
+  private removeEnemyVisual(enemyId: string): void {
+    const ev = this.enemyObjects.get(enemyId);
+    if (ev) {
+      ev.container.destroy();
+      this.enemyObjects.delete(enemyId);
+    }
+  }
+
+  private updateEnemyHp(enemyId: string, hp: number): void {
+    const ev = this.enemyObjects.get(enemyId);
+    if (!ev) return;
+    const hpRatio = ev.maxHp > 0 ? Math.max(0, hp / ev.maxHp) : 0;
+    const barWidth = CELL - 4;
+    ev.hpFill.width = barWidth * hpRatio;
+    ev.hpFill.x = -(barWidth / 2) * (1 - hpRatio);
+    if (hpRatio > 0.5) ev.hpFill.setFillStyle(0xff4444);
+    else if (hpRatio > 0.25) ev.hpFill.setFillStyle(0xffdd00);
+    else ev.hpFill.setFillStyle(0xff0000);
   }
 
   private removeUnitVisual(
@@ -334,7 +430,7 @@ export class GameScene extends Phaser.Scene {
 
       this.statusText.setText('Connected to game room');
 
-      // Listen for my player state
+      // Listen for player state
       this.room.state.players.onAdd((player: {
         listen: (field: string, cb: (value: unknown) => void) => void;
         units: {
@@ -347,25 +443,60 @@ export class GameScene extends Phaser.Scene {
         player.listen('gold', (value) => {
           if (isMe) {
             this.myGold = value as number;
-            this.goldText.setText(`💰 Gold: ${this.myGold}`);
+            this.goldText.setText(`Gold: ${this.myGold}`);
             this.buildUnitBar(MAP_OFFSET_Y + MAP.rows * CELL + 73);
           }
         });
 
         player.listen('kingHp', (value) => {
-          if (isMe) this.myKingHp = value as number;
+          if (isMe) {
+            this.myKingHp = value as number;
+            this.kingHpText.setText(`HP: ${this.myKingHp}`);
+          }
         });
 
         player.units.onAdd((unit: UnitSnap, unitId: string) => {
           const ox = isMe ? MAP_OFFSET_X_LEFT : MAP_OFFSET_X_RIGHT;
           const map = isMe ? this.myUnitObjects : this.oppUnitObjects;
           this.placeUnitVisual(map, unitId, unit.type, unit.col, unit.row, unit.hp, unit.maxHp, ox);
+
+          // Listen for HP changes on defenders
+          unit.listen('hp', (newHp: unknown) => {
+            const container = map.get(unitId);
+            if (container) {
+              this.updateUnitHpBar(container, newHp as number, unit.maxHp);
+            }
+          });
         });
 
         player.units.onRemove((_unit: UnitSnap, unitId: string) => {
           const map = isMe ? this.myUnitObjects : this.oppUnitObjects;
           this.removeUnitVisual(map, unitId);
         });
+      });
+
+      // Listen for enemy state
+      this.room.state.enemies.onAdd((enemy: UnitSnap, enemyId: string) => {
+        this.addEnemyVisual(enemyId, enemy);
+
+        // Listen for position and HP changes
+        enemy.listen('x', (newX: unknown) => {
+          const ev = this.enemyObjects.get(enemyId);
+          if (ev) ev.serverX = newX as number;
+        });
+
+        enemy.listen('y', (newY: unknown) => {
+          const ev = this.enemyObjects.get(enemyId);
+          if (ev) ev.serverY = newY as number;
+        });
+
+        enemy.listen('hp', (newHp: unknown) => {
+          this.updateEnemyHp(enemyId, newHp as number);
+        });
+      });
+
+      this.room.state.enemies.onRemove((_enemy: UnitSnap, enemyId: string) => {
+        this.removeEnemyVisual(enemyId);
       });
 
       // Global state
@@ -375,6 +506,7 @@ export class GameScene extends Phaser.Scene {
           build: '#44ff88',
           combat: '#ff4444',
           income: '#ffdd00',
+          gameover: '#888888',
         };
         this.phaseText.setText((value as string).toUpperCase());
         this.phaseText.setColor(phaseColors[value as string] || '#ffffff');
@@ -393,7 +525,7 @@ export class GameScene extends Phaser.Scene {
       // Messages
       this.room.onMessage('wave:go', (data: { wave: number }) => {
         console.log('[GameScene] Wave started:', data.wave);
-        this.statusText.setText(`⚔️ Wave ${data.wave} — COMBAT!`);
+        this.statusText.setText(`Wave ${data.wave} — COMBAT!`);
       });
 
       this.room.onMessage('game:over', (data: { winner: string }) => {
@@ -402,7 +534,7 @@ export class GameScene extends Phaser.Scene {
       });
 
       this.room.onMessage('error', (data: { message: string }) => {
-        this.statusText.setText(`⚠ ${data.message}`);
+        this.statusText.setText(`${data.message}`);
       });
 
     } catch (err) {

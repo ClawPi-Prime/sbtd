@@ -20,7 +20,19 @@ export type UnitType =
   | 'acid_spider'
   | 'tesla_coil';
 
-export type GamePhase = 'build' | 'combat' | 'income';
+export type GamePhase = 'build' | 'combat' | 'income' | 'gameover';
+
+export type AttackType = 'normal' | 'pierce' | 'magic' | 'siege' | 'chaos';
+export type ArmorType = 'light' | 'medium' | 'heavy' | 'arcane' | 'unarmored' | 'structure';
+export type SpecialAbility = 'splash' | 'heal' | 'aura' | 'charge' | 'chain' | 'suicide';
+
+export const DAMAGE_TABLE: Record<AttackType, Record<ArmorType, number>> = {
+  normal: { light: 1.0, medium: 0.75, heavy: 0.5, arcane: 0.7, unarmored: 1.0, structure: 0.5 },
+  pierce: { light: 1.5, medium: 0.75, heavy: 0.5, arcane: 0.5, unarmored: 1.0, structure: 0.7 },
+  magic:  { light: 1.0, medium: 1.25, heavy: 1.0, arcane: 2.0, unarmored: 1.0, structure: 0.5 },
+  siege:  { light: 0.5, medium: 0.5, heavy: 1.25, arcane: 0.5, unarmored: 0.75, structure: 2.0 },
+  chaos:  { light: 1.0, medium: 1.0, heavy: 1.0, arcane: 1.0, unarmored: 1.0, structure: 1.0 },
+};
 
 export interface LaneConfig {
   id: string;
@@ -48,7 +60,9 @@ export interface UnitDefinition {
   atkSpeed: number;
   moveSpeed: number;
   color: string;
-  special?: string;
+  attackType: AttackType;
+  armorType: ArmorType;
+  special?: SpecialAbility;
   healPerSecond?: number;
   splashRadius?: number;
   splashDmgRatio?: number;
