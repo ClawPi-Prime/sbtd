@@ -6,10 +6,14 @@ import mechanicumConfig from '../config/races/mechanicum.json';
 import type { MapConfig, UnitDefinition, RaceConfig } from '@sbtd/shared';
 
 const MAP = mapAlpha as MapConfig;
-const CELL = 34;        // cell size in pixels — fits nicely at 1280px wide
+// Layout: canvas 1280×720
+// Grid: 12 cols × 20 rows at CELL=28 → 336×560px per grid
+// Two grids side by side with gap: 30 + 336 + 28gap + 336 = 730px (fits)
+// HUD below grids: rows start at 36+560=596, leaving 124px for HUD
+const CELL = 28;
 const MAP_OFFSET_X_LEFT = 30;
-const MAP_OFFSET_X_RIGHT = 680;
-const MAP_OFFSET_Y = 36;
+const MAP_OFFSET_X_RIGHT = 394;   // 30 + 336 + 28
+const MAP_OFFSET_Y = 32;
 
 const RACE_CONFIGS: Record<string, RaceConfig> = {
   survivors: survivorsConfig as unknown as RaceConfig,
@@ -74,6 +78,7 @@ export class GameScene extends Phaser.Scene {
   private timerText!: Phaser.GameObjects.Text;
   private kingHpText!: Phaser.GameObjects.Text;
   private unitBar!: Phaser.GameObjects.Container;
+  private unitBarY = 0;
   private statusText!: Phaser.GameObjects.Text;
 
   constructor() {
@@ -210,54 +215,71 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private buildHUD(width: number, _height: number): void {
-    const hudY = MAP_OFFSET_Y + MAP.rows * CELL + 8;
+  private buildHUD(width: number, height: number): void {
+    // Grid bottom: MAP_OFFSET_Y + rows*CELL = 32 + 20*28 = 592
+    // HUD row 1: y=598  (gold, kingHP, phase, timer, wave, vote button)
+    // HUD row 2: y=620  (status text)
+    // HUD row 3: y=638  (unit bar, 72px tall → bottom at 710, within 720)
+    const gridBottom = MAP_OFFSET_Y + MAP.rows * CELL; // 592
+    const row1 = gridBottom + 6;   // 598
+    const row2 = gridBottom + 26;  // 618
+    const unitBarY = gridBottom + 44; // 636
 
-    // Gold
-    this.goldText = this.add.text(MAP_OFFSET_X_LEFT, hudY, 'Gold: 100', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#ffdd00',
+    // Divider line
+    const divider = this.add.graphics();
+    divider.lineStyle(1, 0x223344, 0.8);
+    divider.lineBetween(0, gridBottom + 2, width, gridBottom + 2);
+
+    // Row 1: Gold | HP | Phase | Timer | Wave | [Vote button]
+    this.goldText = this.add.text(MAP_OFFSET_X_LEFT, row1, '💰 100g', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ffdd00',
     });
-
-    // King HP
-    this.kingHpText = this.add.text(MAP_OFFSET_X_LEFT + 100, hudY, 'HP: 100', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#ff4444',
+    this.kingHpText = this.add.text(MAP_OFFSET_X_LEFT + 80, row1, '❤️ 100', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ff6666',
     });
-
-    // Wave
-    this.waveText = this.add.text(MAP_OFFSET_X_LEFT, hudY + 20, 'Wave: 0', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#aaddff',
-    });
-
-    // Phase + Timer
-    this.phaseText = this.add.text(MAP_OFFSET_X_LEFT + 120, hudY, 'BUILD', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#44ff88',
-    });
-    this.timerText = this.add.text(MAP_OFFSET_X_LEFT + 180, hudY, '30s', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#ffaa44',
-    });
-
-    // Status line
-    this.statusText = this.add.text(width / 2, hudY + 40, 'Connecting...', {
-      fontFamily: 'monospace', fontSize: '12px', color: '#668899',
-    }).setOrigin(0.5, 0);
-
-    // Vote Start Wave button
-    const voteBg = this.add.rectangle(width - 90, hudY + 10, 160, 36, 0x223322)
-      .setInteractive({ useHandCursor: true });
-    const voteText = this.add.text(width - 90, hudY + 10, 'Vote Start Wave', {
+    this.phaseText = this.add.text(MAP_OFFSET_X_LEFT + 160, row1, 'BUILD', {
       fontFamily: 'monospace', fontSize: '13px', color: '#44ff88',
+    });
+    this.timerText = this.add.text(MAP_OFFSET_X_LEFT + 218, row1, '30s', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#ffaa44',
+    });
+    this.waveText = this.add.text(MAP_OFFSET_X_LEFT + 264, row1, 'Wave 0', {
+      fontFamily: 'monospace', fontSize: '13px', color: '#aaddff',
+    });
+
+    // Vote Start Wave button — right side
+    const voteBg = this.add.rectangle(width - 84, row1 + 8, 152, 30, 0x1a2a1a)
+      .setInteractive({ useHandCursor: true })
+      .setStrokeStyle(1, 0x336633);
+    const voteText = this.add.text(width - 84, row1 + 8, '▶ Start Wave', {
+      fontFamily: 'monospace', fontSize: '12px', color: '#44ff88',
     }).setOrigin(0.5);
 
-    voteBg.on('pointerover', () => voteBg.setFillStyle(0x335533));
-    voteBg.on('pointerout', () => voteBg.setFillStyle(0x223322));
+    voteBg.on('pointerover', () => voteBg.setFillStyle(0x224422));
+    voteBg.on('pointerout', () => voteBg.setFillStyle(0x1a2a1a));
     voteBg.on('pointerup', () => {
       this.room?.send('game:voteStart', {});
-      voteText.setText('Voted');
+      voteText.setText('Voted ✓');
+      voteBg.setFillStyle(0x112211);
     });
 
-    // Unit bar
+    // Row 2: Status text
+    this.statusText = this.add.text(width / 2, row2, 'Connecting...', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#556677',
+    }).setOrigin(0.5, 0);
+
+    // Row 3: Unit bar
     this.unitBar = this.add.container(0, 0);
-    this.buildUnitBar(hudY + 65);
+    this.unitBarY = unitBarY;
+    this.buildUnitBar(unitBarY);
+
+    // Sell button placeholder (right of unit bar)
+    this.add.text(width - 84, unitBarY + 20, 'Click unit\nto select', {
+      fontFamily: 'monospace', fontSize: '10px', color: '#334455',
+      align: 'center',
+    }).setOrigin(0.5);
+
+    void height; // used for future panels
   }
 
   private buildUnitBar(y: number): void {
@@ -444,7 +466,7 @@ export class GameScene extends Phaser.Scene {
           if (isMe) {
             this.myGold = value as number;
             this.goldText.setText(`Gold: ${this.myGold}`);
-            this.buildUnitBar(MAP_OFFSET_Y + MAP.rows * CELL + 73);
+            this.buildUnitBar(this.unitBarY);
           }
         });
 
