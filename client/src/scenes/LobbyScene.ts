@@ -17,6 +17,8 @@ export class LobbyScene extends Phaser.Scene {
   private displayName = '';
   private selectedRace = 'survivors';
   private isReady = false;
+  private readyBg!: Phaser.GameObjects.Rectangle;
+  private readyText!: Phaser.GameObjects.Text;
 
   private playerListText!: Phaser.GameObjects.Text;
   private countdownText!: Phaser.GameObjects.Text;
@@ -73,29 +75,30 @@ export class LobbyScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // ── Right panel: race selector ────────────────────────────────────────
-    this.add.text(710, 90, 'Choose Your Race', {
+    this.add.text(710, 112, 'Choose Your Race', {
       fontFamily: 'monospace', fontSize: '20px', color: '#aabbcc',
     });
 
     this.buildRaceCards();
 
     // ── Ready button ─────────────────────────────────────────────────────
-    const readyBg = this.add.rectangle(320, 570, 220, 52, 0x1a3a1a)
+    this.readyBg = this.add.rectangle(320, 570, 220, 52, 0x1a3a1a)
       .setInteractive({ useHandCursor: true })
       .setStrokeStyle(1, 0x33aa33);
-    const readyText = this.add.text(320, 570, 'READY', {
+    this.readyText = this.add.text(320, 570, 'READY', {
       fontFamily: 'monospace', fontSize: '24px', color: '#44ff88',
     }).setOrigin(0.5);
 
-    readyBg.on('pointerover', () => readyBg.setFillStyle(0x224422));
-    readyBg.on('pointerout', () => { if (!this.isReady) readyBg.setFillStyle(0x1a3a1a); });
-    readyBg.on('pointerup', () => {
-      if (this.isReady || !this.room) return;
-      this.isReady = true;
-      readyBg.setFillStyle(0x113311);
-      readyBg.setStrokeStyle(1, 0x228822);
-      readyText.setText('READY ✓');
+    this.readyBg.on('pointerover', () => {
+      this.readyBg.setFillStyle(this.isReady ? 0x442222 : 0x224422);
+    });
+    this.readyBg.on('pointerout', () => {
+      this.readyBg.setFillStyle(this.isReady ? 0x331111 : 0x1a3a1a);
+    });
+    this.readyBg.on('pointerup', () => {
+      if (!this.room) return;
       this.room.send('lobby:ready', {});
+      // Optimistic toggle — server will confirm via state update
     });
 
     // ── Back button ───────────────────────────────────────────────────────
@@ -121,7 +124,7 @@ export class LobbyScene extends Phaser.Scene {
 
     RACES.forEach((race, i) => {
       const cx = 960;
-      const cy = 200 + i * 220;
+      const cy = 230 + i * 220;
       const isSelected = race.id === this.selectedRace;
 
       const bg = this.add.rectangle(cx, cy, 540, 200, isSelected ? 0x142244 : 0x0f1120)
@@ -216,9 +219,20 @@ export class LobbyScene extends Phaser.Scene {
       displayName: string;
       race: string;
       ready: boolean;
-    }) => {
+    }, sessionId: string) => {
       const mark = p.ready ? ' ✓' : ' …';
       lines.push(`${p.displayName}  [${p.race}]${mark}`);
+
+      // Sync ready button for local player
+      if (sessionId === this.room.sessionId) {
+        this.isReady = p.ready;
+        if (this.readyBg && this.readyText) {
+          this.readyBg.setFillStyle(this.isReady ? 0x331111 : 0x1a3a1a);
+          this.readyBg.setStrokeStyle(1, this.isReady ? 0xaa2222 : 0x33aa33);
+          this.readyText.setText(this.isReady ? 'UNREADY' : 'READY');
+          this.readyText.setColor(this.isReady ? '#ff6644' : '#44ff88');
+        }
+      }
     });
 
     this.playerListText.setText(lines.join('\n') || 'Waiting for players...');

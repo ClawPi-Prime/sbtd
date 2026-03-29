@@ -21,9 +21,15 @@ export class LobbyRoom extends Room<LobbyState> {
     this.onMessage('lobby:ready', (client, _message) => {
       const player = this.state.players.get(client.sessionId);
       if (player) {
-        player.ready = true;
-        console.log(`[LobbyRoom] ${client.sessionId} is ready`);
-        this.checkAllReady();
+        player.ready = !player.ready;
+        console.log(`[LobbyRoom] ${client.sessionId} ready=${player.ready}`);
+        // Cancel countdown if someone unreadied
+        if (!player.ready && this.countdownInterval) {
+          clearInterval(this.countdownInterval);
+          this.countdownInterval = null;
+          this.state.countdown = 0;
+        }
+        if (player.ready) this.checkAllReady();
       }
     });
   }
