@@ -15,17 +15,17 @@ const app = express();
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(express.json());
 
-// Rate limiting
+// Health check (before rate limiter — must not be throttled)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Rate limiting (applied after /health)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
 });
 app.use(limiter);
-
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // Colyseus monitor (admin UI)
 app.use('/colyseus', monitor());

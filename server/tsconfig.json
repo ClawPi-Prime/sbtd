@@ -11,9 +11,6 @@
     "resolveJsonModule": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "paths": {
-      "@sbtd/shared": ["../shared/src/index"]
-    },
     "baseUrl": "."
   },
   "include": ["src", "../shared/src"],

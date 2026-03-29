@@ -7,8 +7,8 @@ import { GameOverScene } from './scenes/GameOverScene';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 800,
-  height: 620,
+  width: 1280,
+  height: 720,
   backgroundColor: '#0a0a14',
   scene: [BootScene, MainMenuScene, LobbyScene, GameScene, GameOverScene],
   parent: document.body,

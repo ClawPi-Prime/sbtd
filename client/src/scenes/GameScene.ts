@@ -6,10 +6,10 @@ import mechanicumConfig from '../config/races/mechanicum.json';
 import type { MapConfig, UnitDefinition, RaceConfig } from '@sbtd/shared';
 
 const MAP = mapAlpha as MapConfig;
-const CELL = 26;        // cell size in pixels
-const MAP_OFFSET_X_LEFT = 20;
-const MAP_OFFSET_X_RIGHT = 380;
-const MAP_OFFSET_Y = 30;
+const CELL = 34;        // cell size in pixels — fits nicely at 1280px wide
+const MAP_OFFSET_X_LEFT = 30;
+const MAP_OFFSET_X_RIGHT = 680;
+const MAP_OFFSET_Y = 36;
 
 const RACE_CONFIGS: Record<string, RaceConfig> = {
   survivors: survivorsConfig as unknown as RaceConfig,

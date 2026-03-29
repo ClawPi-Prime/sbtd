@@ -1,4 +1,4 @@
-import type { AttackType, ArmorType, SpecialAbility } from '@sbtd/shared';
+import type { AttackType, ArmorType, SpecialAbility } from '../../../shared/src/index';
 
 export interface EnemySpawnDef {
   id: string;
