@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { Client, Room } from 'colyseus.js';
 import survivorsConfig from '../config/races/survivors.json';
 import mechanicumConfig from '../config/races/mechanicum.json';
-import type { UnitDefinition, RaceConfig, CellType } from '@sbtd/shared';
+import type { UnitDefinition, RaceConfig } from '@sbtd/shared';
 import { MAP_ALPHA } from '@sbtd/shared';
 
 const MAP = MAP_ALPHA;
@@ -131,86 +131,105 @@ export class GameScene extends Phaser.Scene {
 
   private drawGrid(ox: number, oy: number, interactive: boolean): void {
     const g = this.add.graphics();
-    const totalW = MAP.cols * CELL;
-    const totalH = MAP.rows * CELL;
+    const totalW = MAP.cols * CELL;  // 14*24 = 336
+    const totalH = MAP.rows * CELL;  // 24*24 = 576
 
-    // Cell colours by type
-    const CELL_COLORS: Record<CellType, { fill: number; alpha: number }> = {
-      wall:        { fill: 0x1a1a2e, alpha: 1.0 },
-      spawn:       { fill: 0x221100, alpha: 1.0 },
-      lane:        { fill: 0x0d1b2a, alpha: 1.0 },
-      lane_closed: { fill: 0x0d1b2a, alpha: 0.4 },
-      exit:        { fill: 0x1a0022, alpha: 1.0 },
-    };
+    const CYAN = 0x4cc8f5;
+    const WHITE = 0xffffff;
+    const STROKE = 3;
 
-    // Draw each cell
-    for (let r = 0; r < MAP.rows; r++) {
-      for (let c = 0; c < MAP.cols; c++) {
-        const cellType = MAP.cells[r][c];
-        const style = CELL_COLORS[cellType];
-        g.fillStyle(style.fill, style.alpha);
-        g.fillRect(ox + c * CELL, oy + r * CELL, CELL, CELL);
-      }
+    // Dark charcoal background for the entire map area
+    g.fillStyle(0x2a2a2a, 1.0);
+    g.fillRect(ox, oy, totalW, totalH);
+
+    // --- ENEMY SPAWN room (rows 0–2) ---
+    const spawnH = 3 * CELL; // 72
+    g.fillStyle(WHITE, 1.0);
+    g.fillRect(ox, oy, totalW, spawnH);
+    g.lineStyle(STROKE, CYAN, 1.0);
+    g.strokeRect(ox, oy, totalW, spawnH);
+    this.add.text(ox + totalW / 2, oy + spawnH / 2, 'ENEMY SPAWN', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#000000', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    // --- Left corridor (cols 0–5, rows 3–17) ---
+    const corrY = oy + 3 * CELL;     // oy + 72
+    const corrH = 15 * CELL;         // 360 (rows 3–17)
+    const leftCorrW = 6 * CELL;      // 144
+
+    const leftAlpha = interactive ? 1.0 : 0.4;
+    g.fillStyle(interactive ? 0xe8f4ff : WHITE, leftAlpha);
+    g.fillRect(ox, corrY, leftCorrW, corrH);
+    g.lineStyle(STROKE, CYAN, leftAlpha);
+    g.strokeRect(ox, corrY, leftCorrW, corrH);
+
+    if (interactive) {
+      this.add.text(ox + leftCorrW / 2, corrY + corrH / 2, 'PLAYER\nLANE', {
+        fontFamily: 'monospace', fontSize: '11px', color: '#000000',
+        fontStyle: 'bold', align: 'center',
+      }).setOrigin(0.5).setAlpha(0.35);
     }
 
-    // Subtle zone overlays
-    // Spawn zone glow
-    g.fillStyle(0xff2200, 0.08);
-    g.fillRect(ox, oy + MAP.spawnRows.start * CELL, totalW,
-      (MAP.spawnRows.end - MAP.spawnRows.start + 1) * CELL);
+    // --- Right corridor (cols 7–13, rows 3–17) — dimmed in 1v1 ---
+    const rightCorrX = ox + 7 * CELL; // ox + 168
+    const rightCorrW = 7 * CELL;      // 168
 
-    // Exit zone (King's Chamber) glow
-    g.fillStyle(0xaa00ff, 0.08);
-    g.fillRect(ox, oy + MAP.exitRows.start * CELL, totalW,
-      (MAP.exitRows.end - MAP.exitRows.start + 1) * CELL);
+    g.fillStyle(WHITE, 0.4);
+    g.fillRect(rightCorrX, corrY, rightCorrW, corrH);
+    g.lineStyle(STROKE, CYAN, 0.4);
+    g.strokeRect(rightCorrX, corrY, rightCorrW, corrH);
 
-    // Lane buildable zone highlight
-    g.fillStyle(0x0044aa, 0.08);
-    g.fillRect(ox, oy + MAP.laneRows.start * CELL, totalW,
-      (MAP.laneRows.end - MAP.laneRows.start + 1) * CELL);
+    // --- Connector lines: spawn → corridors ---
+    g.lineStyle(2, CYAN, 0.6);
+    g.lineBetween(ox + leftCorrW / 2, oy + spawnH, ox + leftCorrW / 2, corrY);
+    g.lineBetween(rightCorrX + rightCorrW / 2, oy + spawnH, rightCorrX + rightCorrW / 2, corrY);
 
-    // Grid lines (only on lane cells for clean look)
-    g.lineStyle(1, 0x223344, 0.3);
-    for (let c = 0; c <= MAP.cols; c++) {
-      g.lineBetween(ox + c * CELL, oy, ox + c * CELL, oy + totalH);
-    }
-    for (let r = 0; r <= MAP.rows; r++) {
-      g.lineBetween(ox, oy + r * CELL, ox + totalW, oy + r * CELL);
-    }
+    // --- Junction nodes (in row-18 gap between corridors and KC) ---
+    const juncY = oy + 18 * CELL + CELL / 2; // center of row 18
+    const juncLeftX = ox + leftCorrW / 2;     // center of left corridor
+    const juncRightX = rightCorrX + rightCorrW / 2;
 
-    // Wall borders — thicker lines around walls for definition
-    g.lineStyle(1, 0x334466, 0.6);
-    for (let r = 0; r < MAP.rows; r++) {
-      for (let c = 0; c < MAP.cols; c++) {
-        if (MAP.cells[r][c] !== 'wall') continue;
-        const x = ox + c * CELL;
-        const y = oy + r * CELL;
-        g.strokeRect(x, y, CELL, CELL);
-      }
-    }
+    // Connector lines: corridor bottoms → junction nodes
+    g.lineStyle(2, CYAN, 1.0);
+    g.lineBetween(juncLeftX, corrY + corrH, juncLeftX, juncY - 18);
+    g.lineStyle(2, CYAN, 0.4);
+    g.lineBetween(juncRightX, corrY + corrH, juncRightX, juncY - 18);
 
-    // Outer border
-    g.lineStyle(2, 0x334466, 1.0);
-    g.strokeRect(ox, oy, totalW, totalH);
+    // Left junction node
+    g.fillStyle(WHITE, 1.0);
+    g.fillCircle(juncLeftX, juncY, 18);
+    g.lineStyle(STROKE, CYAN, 1.0);
+    g.strokeCircle(juncLeftX, juncY, 18);
+    g.fillStyle(0xf5a0b0, 1.0);
+    g.fillCircle(juncLeftX, juncY, 9);
 
-    // Lane direction arrows (pointing down into lanes)
-    MAP.lanes.forEach((lane) => {
-      const lx = ox + lane.spawnCol * CELL + CELL / 2;
-      for (let r = MAP.laneRows.start; r <= MAP.laneRows.end; r += 3) {
-        const ly = oy + r * CELL + CELL / 2;
-        g.fillStyle(0xffffff, 0.1);
-        g.fillTriangle(lx, ly - 4, lx + 4, ly + 4, lx - 4, ly + 4);
-      }
-    });
+    // Right junction node (dimmed)
+    g.fillStyle(WHITE, 0.4);
+    g.fillCircle(juncRightX, juncY, 18);
+    g.lineStyle(STROKE, CYAN, 0.4);
+    g.strokeCircle(juncRightX, juncY, 18);
+    g.fillStyle(0xe01020, 0.4);
+    g.fillCircle(juncRightX, juncY, 9);
 
-    // Zone labels
-    const labelStyle = { fontFamily: 'monospace', fontSize: '9px', color: '#ffffff' };
-    this.add.text(ox + totalW / 2, oy + CELL, 'SPAWN', { ...labelStyle, color: '#ff4422' })
-      .setOrigin(0.5).setAlpha(0.5);
-    this.add.text(ox + totalW / 2, oy + (MAP.exitRows.start + 2) * CELL, "KING'S CHAMBER",
-      { ...labelStyle, color: '#aa44ff' }).setOrigin(0.5).setAlpha(0.5);
+    // --- KINGS CHAMBER (rows 19–23) ---
+    const kcY = oy + 19 * CELL;  // oy + 456
+    const kcH = 5 * CELL;        // 120
 
-    // Interactive click zone for my grid
+    // Connector lines: junction nodes → KC top
+    g.lineStyle(2, CYAN, 1.0);
+    g.lineBetween(juncLeftX, juncY + 18, juncLeftX, kcY);
+    g.lineStyle(2, CYAN, 0.4);
+    g.lineBetween(juncRightX, juncY + 18, juncRightX, kcY);
+
+    g.fillStyle(WHITE, 1.0);
+    g.fillRect(ox, kcY, totalW, kcH);
+    g.lineStyle(STROKE, CYAN, 1.0);
+    g.strokeRect(ox, kcY, totalW, kcH);
+    this.add.text(ox + totalW / 2, kcY + kcH / 2, 'KINGS CHAMBER', {
+      fontFamily: 'monospace', fontSize: '14px', color: '#000000', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    // --- Interactive click zone for placement ---
     if (interactive) {
       const hitZone = this.add.rectangle(
         ox + totalW / 2,
