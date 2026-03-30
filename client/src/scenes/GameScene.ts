@@ -38,6 +38,7 @@ interface UnitSnap {
   alive: boolean;
   attackType: string;
   armorType: string;
+  ownerId: string;
   listen: (field: string, cb: (value: unknown, prev: unknown) => void) => void;
 }
 
@@ -48,6 +49,7 @@ interface EnemyVisual {
   serverX: number;
   serverY: number;
   maxHp: number;
+  isMyLane: boolean;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -117,11 +119,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, _delta: number): void {
-    // Interpolate enemy positions toward server-authoritative position
     this.enemyObjects.forEach((ev) => {
-      const targetPx = MAP_OFFSET_X_LEFT + ev.serverX * CELL + CELL / 2;
+      const ox = ev.isMyLane ? MAP_OFFSET_X_LEFT : MAP_OFFSET_X_RIGHT;
+      const targetPx = ox + ev.serverX * CELL + CELL / 2;
       const targetPy = MAP_OFFSET_Y + ev.serverY * CELL + CELL / 2;
-      // Hide enemies that haven't entered the grid yet (y < 0)
       ev.container.setVisible(ev.serverY >= 0);
       ev.container.x += (targetPx - ev.container.x) * 0.3;
       ev.container.y += (targetPy - ev.container.y) * 0.3;
@@ -379,7 +380,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addEnemyVisual(enemyId: string, unit: UnitSnap): void {
-    const px = MAP_OFFSET_X_LEFT + unit.x * CELL + CELL / 2;
+    // Render on left grid (mine) if ownerId matches my session, else right (opponent)
+    const isMyLane = unit.ownerId === this.room?.sessionId;
+    const ox = isMyLane ? MAP_OFFSET_X_LEFT : MAP_OFFSET_X_RIGHT;
+    const px = ox + unit.x * CELL + CELL / 2;
     const py = MAP_OFFSET_Y + unit.y * CELL + CELL / 2;
 
     const container = this.add.container(px, py);
@@ -410,6 +414,7 @@ export class GameScene extends Phaser.Scene {
       serverX: unit.x,
       serverY: unit.y,
       maxHp: unit.maxHp,
+      isMyLane,
     });
   }
 

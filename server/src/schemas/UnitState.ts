@@ -3,6 +3,7 @@ import { Schema, type } from '@colyseus/schema';
 export class UnitState extends Schema {
   @type('string') id: string = '';
   @type('string') type: string = '';
+  @type('string') ownerId: string = '';   // sessionId of the player whose lane this enemy is in
   @type('int8') col: number = 0;
   @type('int8') row: number = 0;
   @type('float32') x: number = 0;

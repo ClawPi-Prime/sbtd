@@ -161,33 +161,33 @@ export class GameRoom extends Room<GameState> {
     this.broadcast('wave:go', { wave: this.state.wave });
     console.log(`[GameRoom] Wave ${this.state.wave} started!`);
 
-    // Spawn enemies across all lanes
+    // Spawn one wave of enemies per player lane
     const waveEnemies = getWaveEnemies(this.state.wave);
-    const lanes = MAP_CONFIG.lanes;
+    const lane = MAP_CONFIG.lanes[0]; // single lane for alpha map
 
-    waveEnemies.forEach((def, i) => {
-      const unit = new UnitState();
-      unit.id = def.id;
-      unit.type = def.type;
-      // Distribute enemies across lanes, stagger spawn positions
-      const lane = lanes[i % lanes.length];
-      unit.col = lane.col;
-      unit.row = MAP_CONFIG.spawnRow;
-      unit.x = lane.col;
-      // Stagger spawn: start negative y so enemies enter from off-screen top
-      // Client rendering clamps visuals to grid area so they only appear when y >= 0
-      unit.y = -(Math.floor(i / lanes.length) * 1.5);
-      unit.hp = def.hp;
-      unit.maxHp = def.maxHp;
-      unit.alive = true;
-      unit.attackType = def.attackType;
-      unit.armorType = def.armorType;
-      unit.moveSpeed = def.moveSpeed;
-      unit.atkSpeed = def.atkSpeed;
-      unit.dmg = def.dmg;
-      unit.range = def.range;
+    // Each player gets their own set of enemies marching down their lane
+    this.state.players.forEach((_player, sessionId) => {
+      waveEnemies.forEach((def, i) => {
+        const unit = new UnitState();
+        unit.id = `${sessionId}_${def.id}`;
+        unit.type = def.type;
+        unit.ownerId = sessionId;
+        unit.col = lane.col;
+        unit.row = MAP_CONFIG.spawnRow;
+        unit.x = lane.col;
+        unit.y = -(i * 1.5); // stagger: enter grid top-to-bottom
+        unit.hp = def.hp;
+        unit.maxHp = def.maxHp;
+        unit.alive = true;
+        unit.attackType = def.attackType;
+        unit.armorType = def.armorType;
+        unit.moveSpeed = def.moveSpeed;
+        unit.atkSpeed = def.atkSpeed;
+        unit.dmg = def.dmg;
+        unit.range = def.range;
 
-      this.state.enemies.set(unit.id, unit);
+        this.state.enemies.set(unit.id, unit);
+      });
     });
 
     // Start game loop at 20Hz
@@ -211,8 +211,11 @@ export class GameRoom extends Room<GameState> {
         if (p.kingHp > 0) playerEntries.push({ sessionId: sid, player: p });
       });
 
-      if (playerEntries.length > 0) {
-        // Distribute leak damage round-robin
+      // Deal damage to the player whose lane was breached
+      if (enemy.ownerId) {
+        const owner = this.state.players.get(enemy.ownerId);
+        if (owner && owner.kingHp > 0) owner.kingHp -= 1;
+      } else if (playerEntries.length > 0) {
         const target = playerEntries[Math.floor(Math.random() * playerEntries.length)];
         target.player.kingHp -= 1;
       }

@@ -45,10 +45,10 @@ function getAllDefenders(state: GameState): { unit: UnitState; def: UnitDef | un
   return result;
 }
 
-function getAllEnemies(state: GameState): UnitState[] {
+function getEnemiesForPlayer(state: GameState, sessionId: string): UnitState[] {
   const result: UnitState[] = [];
   state.enemies.forEach((enemy) => {
-    if (enemy.alive) result.push(enemy);
+    if (enemy.alive && enemy.ownerId === sessionId) result.push(enemy);
   });
   return result;
 }
@@ -58,262 +58,172 @@ export function tickCombat(
   deltaSec: number,
   unitDefs: Record<string, UnitDef>,
 ): void {
-  const defenders = getAllDefenders(state);
-  const enemies = getAllEnemies(state);
+  // Process each player's lane independently:
+  // defenders owned by player X fight enemies owned by player X
+  state.players.forEach((player, sessionId) => {
+    const defenders = getAllDefenders(state).filter(d => d.playerSessionId === sessionId);
+    const enemies = getEnemiesForPlayer(state, sessionId);
 
-  // Populate defs for defenders
-  for (const d of defenders) {
-    d.def = unitDefs[d.unit.type];
-  }
-
-  // ── 1. Aura buffs ──
-  const auraBuffs = new Map<string, AuraBuff>();
-
-  // Initialize all defenders with base buffs
-  for (const d of defenders) {
-    auraBuffs.set(d.unit.id, { dmgMult: 1.0, armorBonus: 0 });
-  }
-
-  // Apply aura from defenders with "aura" special
-  for (const d of defenders) {
-    const def = d.def;
-    if (!def || def.special !== 'aura') continue;
-
-    const auraRange = def.auraRange ?? 0;
-    const auraDmgBoost = def.auraDmg ?? 0;
-    const auraArmorBoost = def.auraArmor ?? 0;
-
-    for (const other of defenders) {
-      if (other.unit.id === d.unit.id) continue;
-      const distance = dist(d.unit.x, d.unit.y, other.unit.x, other.unit.y);
-      if (distance <= auraRange) {
-        const buff = auraBuffs.get(other.unit.id)!;
-        buff.dmgMult += auraDmgBoost;
-        buff.armorBonus += auraArmorBoost;
-      }
-    }
-  }
-
-  // ── 2. Enemy attacks on defenders ──
-  for (const enemy of enemies) {
-    if (!enemy.alive) continue;
-    if (enemy.atkSpeed <= 0) continue;
-
-    enemy.attackCooldown -= deltaSec;
-    if (enemy.attackCooldown > 0) continue;
-
-    // Find closest defender in range
-    let closestDef: { unit: UnitState; def: UnitDef | undefined } | null = null;
-    let closestDist = Infinity;
-
+    // Populate defs
     for (const d of defenders) {
-      if (!d.unit.alive) continue;
-      const distance = dist(enemy.x, enemy.y, d.unit.x, d.unit.y);
-      if (distance < closestDist) {
-        closestDist = distance;
-        closestDef = d;
-      }
+      d.def = unitDefs[d.unit.type];
     }
 
-    if (!closestDef || closestDist > enemy.range) continue;
+    // Set x/y on defenders from their grid col/row (they're stationary)
+    for (const d of defenders) {
+      d.unit.x = d.unit.col;
+      d.unit.y = d.unit.row;
+    }
 
-    // Attack!
-    const rawDmg = calcDamage(
-      enemy.dmg,
-      enemy.attackType as AttackType,
-      closestDef.unit.armorType as ArmorType,
-      1.0,
-    );
-    closestDef.unit.hp -= Math.round(rawDmg);
-
-    // Splash damage
-    const enemyStats = getEnemyStats(enemy.type);
-    if (enemyStats.special === 'splash' && enemyStats.splashRadius) {
-      for (const d of defenders) {
-        if (d.unit.id === closestDef.unit.id) continue;
-        if (!d.unit.alive) continue;
-        const sDist = dist(closestDef.unit.x, closestDef.unit.y, d.unit.x, d.unit.y);
-        if (sDist <= enemyStats.splashRadius) {
-          const splashDmg = calcDamage(
-            enemy.dmg * (enemyStats.splashDmgRatio ?? 0.5),
-            enemy.attackType as AttackType,
-            d.unit.armorType as ArmorType,
-            1.0,
-          );
-          d.unit.hp -= Math.round(splashDmg);
+    // ── 1. Aura buffs ──
+    const auraBuffs = new Map<string, AuraBuff>();
+    for (const d of defenders) {
+      auraBuffs.set(d.unit.id, { dmgMult: 1.0, armorBonus: 0 });
+    }
+    for (const d of defenders) {
+      const def = d.def;
+      if (!def || def.special !== 'aura') continue;
+      const auraRange = def.auraRange ?? 0;
+      for (const other of defenders) {
+        if (other.unit.id === d.unit.id) continue;
+        const distance = dist(d.unit.x, d.unit.y, other.unit.x, other.unit.y);
+        if (distance <= auraRange) {
+          const buff = auraBuffs.get(other.unit.id)!;
+          buff.dmgMult += def.auraDmg ?? 0;
+          buff.armorBonus += def.auraArmor ?? 0;
         }
       }
     }
 
-    enemy.attackCooldown = enemy.atkSpeed > 0 ? 1 / enemy.atkSpeed : 999;
-  }
+    // ── 2. Enemy attacks on defenders ──
+    for (const enemy of enemies) {
+      if (!enemy.alive || enemy.atkSpeed <= 0) continue;
+      enemy.attackCooldown -= deltaSec;
+      if (enemy.attackCooldown > 0) continue;
 
-  // ── 3. Defender attacks on enemies ──
-  for (const d of defenders) {
-    const def = d.def;
-    if (!def || !d.unit.alive) continue;
+      let closestDef: { unit: UnitState; def: UnitDef | undefined } | null = null;
+      let closestDist = Infinity;
+      for (const d of defenders) {
+        if (!d.unit.alive) continue;
+        const distance = dist(enemy.x, enemy.y, d.unit.x, d.unit.y);
+        if (distance < closestDist) { closestDist = distance; closestDef = d; }
+      }
+      if (!closestDef || closestDist > enemy.range) continue;
 
-    const buff = auraBuffs.get(d.unit.id) ?? { dmgMult: 1.0, armorBonus: 0 };
+      const rawDmg = calcDamage(enemy.dmg, enemy.attackType as AttackType, closestDef.unit.armorType as ArmorType, 1.0);
+      closestDef.unit.hp -= Math.round(rawDmg);
 
-    // Heal special
-    if (def.special === 'heal' && def.healPerSecond) {
-      d.unit.healCooldown -= deltaSec;
-      if (d.unit.healCooldown <= 0) {
-        // Heal lowest-HP nearby ally
-        let lowestHpAlly: UnitState | null = null;
-        let lowestRatio = 1.0;
-        const healRange = def.range > 0 ? def.range : 3;
-
-        for (const other of defenders) {
-          if (other.unit.id === d.unit.id) continue;
-          if (!other.unit.alive) continue;
-          if (other.unit.hp >= other.unit.maxHp) continue;
-          const hDist = dist(d.unit.x, d.unit.y, other.unit.x, other.unit.y);
-          if (hDist > healRange) continue;
-          const ratio = other.unit.hp / other.unit.maxHp;
-          if (ratio < lowestRatio) {
-            lowestRatio = ratio;
-            lowestHpAlly = other.unit;
+      const enemyStats = getEnemyStats(enemy.type);
+      if (enemyStats.special === 'splash' && enemyStats.splashRadius) {
+        for (const d of defenders) {
+          if (d.unit.id === closestDef.unit.id || !d.unit.alive) continue;
+          const sDist = dist(closestDef.unit.x, closestDef.unit.y, d.unit.x, d.unit.y);
+          if (sDist <= enemyStats.splashRadius) {
+            d.unit.hp -= Math.round(calcDamage(enemy.dmg * (enemyStats.splashDmgRatio ?? 0.5), enemy.attackType as AttackType, d.unit.armorType as ArmorType, 1.0));
           }
         }
-
-        if (lowestHpAlly) {
-          lowestHpAlly.hp = Math.min(
-            lowestHpAlly.maxHp,
-            lowestHpAlly.hp + def.healPerSecond,
-          );
-        }
-        d.unit.healCooldown = 1.0; // heal once per second
       }
+      enemy.attackCooldown = 1 / enemy.atkSpeed;
     }
 
-    // Chain special (tesla_coil)
-    if (def.special === 'chain' && def.chainTargets) {
+    // ── 3. Defender attacks on enemies ──
+    for (const d of defenders) {
+      const def = d.def;
+      if (!def || !d.unit.alive) continue;
+      const buff = auraBuffs.get(d.unit.id) ?? { dmgMult: 1.0, armorBonus: 0 };
+
+      // Heal
+      if (def.special === 'heal' && def.healPerSecond) {
+        d.unit.healCooldown -= deltaSec;
+        if (d.unit.healCooldown <= 0) {
+          let lowestHpAlly: UnitState | null = null;
+          let lowestRatio = 1.0;
+          const healRange = def.range > 0 ? def.range : 3;
+          for (const other of defenders) {
+            if (other.unit.id === d.unit.id || !other.unit.alive || other.unit.hp >= other.unit.maxHp) continue;
+            if (dist(d.unit.x, d.unit.y, other.unit.x, other.unit.y) > healRange) continue;
+            const ratio = other.unit.hp / other.unit.maxHp;
+            if (ratio < lowestRatio) { lowestRatio = ratio; lowestHpAlly = other.unit; }
+          }
+          if (lowestHpAlly) lowestHpAlly.hp = Math.min(lowestHpAlly.maxHp, lowestHpAlly.hp + def.healPerSecond);
+          d.unit.healCooldown = 1.0;
+        }
+        continue;
+      }
+
+      // Chain (tesla_coil)
+      if (def.special === 'chain' && def.chainTargets) {
+        d.unit.attackCooldown -= deltaSec;
+        if (d.unit.attackCooldown > 0) continue;
+        let primary: UnitState | null = null;
+        let primaryDist = Infinity;
+        for (const e of enemies) {
+          if (!e.alive) continue;
+          const eDist = dist(d.unit.x, d.unit.y, e.x, e.y);
+          if (eDist <= def.range && eDist < primaryDist) { primaryDist = eDist; primary = e; }
+        }
+        if (primary) {
+          primary.hp -= Math.round(calcDamage(def.dmg * buff.dmgMult, def.attackType, primary.armorType as ArmorType, 1.0));
+          let chained = 0;
+          for (const e of enemies) {
+            if (chained >= def.chainTargets || !e.alive || e.id === primary.id) continue;
+            if (dist(primary.x, primary.y, e.x, e.y) <= 2) {
+              e.hp -= Math.round(calcDamage(def.dmg * buff.dmgMult * 0.7, def.attackType, e.armorType as ArmorType, 1.0));
+              chained++;
+            }
+          }
+        }
+        d.unit.attackCooldown = def.atkSpeed > 0 ? 1 / def.atkSpeed : 999;
+        continue;
+      }
+
+      // Suicide (boomba)
+      if (def.special === 'suicide') {
+        for (const e of enemies) {
+          if (!e.alive) continue;
+          if (dist(d.unit.x, d.unit.y, e.x, e.y) < 1) {
+            for (const target of enemies) {
+              if (!target.alive) continue;
+              if (dist(d.unit.x, d.unit.y, target.x, target.y) <= (def.splashRadius ?? 2.0)) {
+                target.hp -= Math.round(calcDamage(def.dmg * (def.splashDmgRatio ?? 1.0) * buff.dmgMult, def.attackType, target.armorType as ArmorType, 1.0));
+              }
+            }
+            d.unit.hp = 0;
+            break;
+          }
+        }
+        continue;
+      }
+
+      // Normal attack
+      if (def.dmg <= 0 || def.atkSpeed <= 0) continue;
       d.unit.attackCooldown -= deltaSec;
       if (d.unit.attackCooldown > 0) continue;
 
-      let primary: UnitState | null = null;
-      let primaryDist = Infinity;
-
+      let closestEnemy: UnitState | null = null;
+      let closestEnemyDist = Infinity;
       for (const e of enemies) {
         if (!e.alive) continue;
         const eDist = dist(d.unit.x, d.unit.y, e.x, e.y);
-        if (eDist <= def.range && eDist < primaryDist) {
-          primaryDist = eDist;
-          primary = e;
-        }
+        if (eDist <= def.range && eDist < closestEnemyDist) { closestEnemyDist = eDist; closestEnemy = e; }
       }
+      if (!closestEnemy) continue;
 
-      if (primary) {
-        const dmg = calcDamage(
-          def.dmg * buff.dmgMult,
-          def.attackType,
-          primary.armorType as ArmorType,
-          1.0,
-        );
-        primary.hp -= Math.round(dmg);
+      closestEnemy.hp -= Math.round(calcDamage(def.dmg * buff.dmgMult, def.attackType, closestEnemy.armorType as ArmorType, 1.0));
 
-        // Chain to additional targets within 2 cells of primary
-        let chained = 0;
+      if (def.special === 'splash' && def.splashRadius) {
         for (const e of enemies) {
-          if (chained >= def.chainTargets) break;
-          if (!e.alive || e.id === primary.id) continue;
-          const cDist = dist(primary.x, primary.y, e.x, e.y);
-          if (cDist <= 2) {
-            const chainDmg = calcDamage(
-              def.dmg * buff.dmgMult * 0.7, // chain damage falloff
-              def.attackType,
-              e.armorType as ArmorType,
-              1.0,
-            );
-            e.hp -= Math.round(chainDmg);
-            chained++;
+          if (e.id === closestEnemy.id || !e.alive) continue;
+          if (dist(closestEnemy.x, closestEnemy.y, e.x, e.y) <= def.splashRadius) {
+            e.hp -= Math.round(calcDamage(def.dmg * (def.splashDmgRatio ?? 0.5) * buff.dmgMult, def.attackType, e.armorType as ArmorType, 1.0));
           }
         }
       }
-
-      d.unit.attackCooldown = def.atkSpeed > 0 ? 1 / def.atkSpeed : 999;
-      continue; // chain already handled attack
+      d.unit.attackCooldown = 1 / def.atkSpeed;
     }
 
-    // Suicide special (boomba)
-    if (def.special === 'suicide') {
-      // Boombas don't have normal attacks, they move and explode on contact
-      for (const e of enemies) {
-        if (!e.alive) continue;
-        const eDist = dist(d.unit.x, d.unit.y, e.x, e.y);
-        if (eDist < 1) {
-          // Explode!
-          const splashRadius = def.splashRadius ?? 2.0;
-          const splashRatio = def.splashDmgRatio ?? 1.0;
-          for (const target of enemies) {
-            if (!target.alive) continue;
-            const tDist = dist(d.unit.x, d.unit.y, target.x, target.y);
-            if (tDist <= splashRadius) {
-              const dmg = calcDamage(
-                def.dmg * splashRatio * buff.dmgMult,
-                def.attackType,
-                target.armorType as ArmorType,
-                1.0,
-              );
-              target.hp -= Math.round(dmg);
-            }
-          }
-          d.unit.hp = 0; // boomba dies
-          break;
-        }
-      }
-      continue;
-    }
-
-    // Normal/ranged attack
-    if (def.dmg <= 0 || def.atkSpeed <= 0) continue;
-
-    d.unit.attackCooldown -= deltaSec;
-    if (d.unit.attackCooldown > 0) continue;
-
-    let closestEnemy: UnitState | null = null;
-    let closestEnemyDist = Infinity;
-
-    for (const e of enemies) {
-      if (!e.alive) continue;
-      const eDist = dist(d.unit.x, d.unit.y, e.x, e.y);
-      if (eDist <= def.range && eDist < closestEnemyDist) {
-        closestEnemyDist = eDist;
-        closestEnemy = e;
-      }
-    }
-
-    if (!closestEnemy) continue;
-
-    const dmg = calcDamage(
-      def.dmg * buff.dmgMult,
-      def.attackType,
-      closestEnemy.armorType as ArmorType,
-      1.0,
-    );
-    closestEnemy.hp -= Math.round(dmg);
-
-    // Splash
-    if (def.special === 'splash' && def.splashRadius) {
-      for (const e of enemies) {
-        if (e.id === closestEnemy.id) continue;
-        if (!e.alive) continue;
-        const sDist = dist(closestEnemy.x, closestEnemy.y, e.x, e.y);
-        if (sDist <= def.splashRadius) {
-          const splashDmg = calcDamage(
-            def.dmg * (def.splashDmgRatio ?? 0.5) * buff.dmgMult,
-            def.attackType,
-            e.armorType as ArmorType,
-            1.0,
-          );
-          e.hp -= Math.round(splashDmg);
-        }
-      }
-    }
-
-    d.unit.attackCooldown = 1 / def.atkSpeed;
-  }
+    void player; // suppress unused warning
+  });
 
   // ── 4. Mark dead units ──
   const deadEnemyIds: string[] = [];
