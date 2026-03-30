@@ -79,8 +79,10 @@ export class GameRoom extends Room<GameState> {
       unit.type = message.type;
       unit.col = message.col;
       unit.row = message.row;
-      unit.x = message.col;
-      unit.y = message.row;
+      unit.x = message.col + 0.5;
+      unit.y = message.row + 0.5;
+      unit.homeX = message.col + 0.5;
+      unit.homeY = message.row + 0.5;
       unit.hp = def.hp;
       unit.maxHp = def.hp;
       unit.alive = true;
@@ -138,6 +140,16 @@ export class GameRoom extends Room<GameState> {
     this.state.phase = 'build';
     this.state.buildTimer = 30;
     this.voteStartSet.clear();
+
+    // Reset defender positions to home between waves
+    this.state.players.forEach((player) => {
+      player.units.forEach((unit) => {
+        if (unit.homeX !== undefined) {
+          unit.x = unit.homeX;
+          unit.y = unit.homeY;
+        }
+      });
+    });
 
     console.log('[GameRoom] Build timer started (30s)');
 

@@ -69,10 +69,47 @@ export function tickCombat(
       d.def = unitDefs[d.unit.type];
     }
 
-    // Set x/y on defenders from their grid col/row (they're stationary)
+    const PURSUIT_RANGE_MULT = 2.5; // pursue enemies within range * 2.5
+    const MOVE_SPEED = 2.0; // cells per second (same as prototype feeling)
+
     for (const d of defenders) {
-      d.unit.x = d.unit.col;
-      d.unit.y = d.unit.row;
+      const def = d.def;
+      if (!def) continue;
+
+      // Find nearest enemy within pursuit range
+      let nearestEnemy: UnitState | null = null;
+      let nearestDist = Infinity;
+      for (const e of enemies) {
+        if (!e.alive) continue;
+        const eDist = dist(d.unit.x, d.unit.y, e.x, e.y);
+        if (eDist < nearestDist) {
+          nearestDist = eDist;
+          nearestEnemy = e;
+        }
+      }
+
+      const pursuitRange = (def.range ?? 2) * PURSUIT_RANGE_MULT;
+
+      if (nearestEnemy && nearestDist <= pursuitRange && nearestDist > (def.range ?? 2)) {
+        // Move toward enemy
+        const dx = nearestEnemy.x - d.unit.x;
+        const dy = nearestEnemy.y - d.unit.y;
+        const mag = Math.sqrt(dx*dx + dy*dy);
+        if (mag > 0.1) {
+          d.unit.x += (dx/mag) * Math.min(MOVE_SPEED * deltaSec, mag);
+          d.unit.y += (dy/mag) * Math.min(MOVE_SPEED * deltaSec, mag);
+        }
+      } else if (!nearestEnemy || nearestDist > pursuitRange) {
+        // Return to home position
+        const dx = d.unit.homeX - d.unit.x;
+        const dy = d.unit.homeY - d.unit.y;
+        const mag = Math.sqrt(dx*dx + dy*dy);
+        if (mag > 0.05) {
+          d.unit.x += (dx/mag) * Math.min(MOVE_SPEED * 0.5 * deltaSec, mag);
+          d.unit.y += (dy/mag) * Math.min(MOVE_SPEED * 0.5 * deltaSec, mag);
+        }
+      }
+      // When in range, stay put (attack from current position)
     }
 
     // ── 1. Aura buffs ──

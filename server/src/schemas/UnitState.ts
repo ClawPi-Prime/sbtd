@@ -15,6 +15,8 @@ export class UnitState extends Schema {
   @type('string') armorType: string = 'unarmored';
 
   // Internal only — not synced to client (no @type decorator)
+  homeX: number = 0;
+  homeY: number = 0;
   attackCooldown: number = 0;
   healCooldown: number = 0;
   moveSpeed: number = 0;

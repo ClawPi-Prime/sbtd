@@ -119,6 +119,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, _delta: number): void {
+    // Lerp defender positions
+    const lerpUnit = (map: Map<string, Phaser.GameObjects.Container>) => {
+      map.forEach((container) => {
+        const c = container as Phaser.GameObjects.Container & { serverX?: number; serverY?: number };
+        if (c.serverX !== undefined) c.x += (c.serverX - c.x) * 0.25;
+        if (c.serverY !== undefined) c.y += (c.serverY - c.y) * 0.25;
+      });
+    };
+    lerpUnit(this.myUnitObjects);
+    lerpUnit(this.oppUnitObjects);
+
     this.enemyObjects.forEach((ev) => {
       const ox = ev.isMyLane ? MAP_OFFSET_X_LEFT : MAP_OFFSET_X_RIGHT;
       const targetPx = ox + ev.serverX * CELL + CELL / 2;
@@ -564,12 +575,22 @@ export class GameScene extends Phaser.Scene {
           const map = isMe ? this.myUnitObjects : this.oppUnitObjects;
           this.placeUnitVisual(map, unitId, unit.type, unit.col, unit.row, unit.hp, unit.maxHp, ox);
 
-          // Listen for HP changes on defenders
-          unit.listen('hp', (newHp: unknown) => {
+          // Track server position updates
+          unit.listen("x", (newX: unknown) => {
             const container = map.get(unitId);
             if (container) {
-              this.updateUnitHpBar(container, newHp as number, unit.maxHp);
+              (container as Phaser.GameObjects.Container & { serverX?: number; serverY?: number }).serverX = ox + (newX as number) * CELL;
             }
+          });
+          unit.listen("y", (newY: unknown) => {
+            const container = map.get(unitId);
+            if (container) {
+              (container as Phaser.GameObjects.Container & { serverX?: number; serverY?: number }).serverY = MAP_OFFSET_Y + (newY as number) * CELL;
+            }
+          });
+          unit.listen("hp", (newHp: unknown) => {
+            const container = map.get(unitId);
+            if (container) this.updateUnitHpBar(container, newHp as number, unit.maxHp);
           });
         });
 
