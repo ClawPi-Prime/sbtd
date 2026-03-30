@@ -117,10 +117,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, _delta: number): void {
-    // Interpolate enemy positions
+    // Interpolate enemy positions toward server-authoritative position
     this.enemyObjects.forEach((ev) => {
       const targetPx = MAP_OFFSET_X_LEFT + ev.serverX * CELL + CELL / 2;
       const targetPy = MAP_OFFSET_Y + ev.serverY * CELL + CELL / 2;
+      // Hide enemies that haven't entered the grid yet (y < 0)
+      ev.container.setVisible(ev.serverY >= 0);
       ev.container.x += (targetPx - ev.container.x) * 0.3;
       ev.container.y += (targetPy - ev.container.y) * 0.3;
     });

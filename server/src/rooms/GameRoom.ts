@@ -174,7 +174,9 @@ export class GameRoom extends Room<GameState> {
       unit.col = lane.col;
       unit.row = MAP_CONFIG.spawnRow;
       unit.x = lane.col;
-      unit.y = MAP_CONFIG.spawnRow - (Math.floor(i / lanes.length) * 1.5); // stagger behind spawn
+      // Stagger spawn: start negative y so enemies enter from off-screen top
+      // Client rendering clamps visuals to grid area so they only appear when y >= 0
+      unit.y = -(Math.floor(i / lanes.length) * 1.5);
       unit.hp = def.hp;
       unit.maxHp = def.maxHp;
       unit.alive = true;
