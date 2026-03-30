@@ -116,7 +116,8 @@ export class GameRoom extends Room<GameState> {
     console.log(`[GameRoom] ${player.displayName} joined`);
 
     // Start build timer when room is full
-    if (this.clients.length >= 2) {
+    // Start build timer when room has at least 1 player (solo testing) or 2 players
+    if (this.clients.length >= 1) {
       this.startBuildTimer();
     }
   }

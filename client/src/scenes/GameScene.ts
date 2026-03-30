@@ -225,9 +225,32 @@ export class GameScene extends Phaser.Scene {
     g.fillRect(ox, kcY, totalW, kcH);
     g.lineStyle(STROKE, CYAN, 1.0);
     g.strokeRect(ox, kcY, totalW, kcH);
-    this.add.text(ox + totalW / 2, kcY + kcH / 2, 'KINGS CHAMBER', {
-      fontFamily: 'monospace', fontSize: '14px', color: '#000000', fontStyle: 'bold',
-    }).setOrigin(0.5);
+    this.add.text(ox + totalW / 2, kcY + 14, 'KINGS CHAMBER', {
+      fontFamily: 'monospace', fontSize: '11px', color: '#000000', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // King figure (crown + body)
+    const kx = ox + totalW / 2;
+    const ky = kcY + kcH * 0.55;
+    // Crown
+    g.fillStyle(0xf5c518, 1.0);
+    g.fillTriangle(kx - 18, ky - 18, kx, ky - 30, kx + 18, ky - 18);
+    g.fillTriangle(kx - 8, ky - 18, kx, ky - 26, kx + 8, ky - 18);
+    g.fillRect(kx - 18, ky - 18, 36, 8);
+    // Body
+    g.fillStyle(0xc0392b, 1.0);
+    g.fillRect(kx - 14, ky - 10, 28, 28);
+    // Head
+    g.fillStyle(0xf5cba7, 1.0);
+    g.fillCircle(kx, ky - 20, 12);
+    // HP bar below king
+    if (interactive) {
+      // Placeholder — updated via kingHpText in HUD
+      g.fillStyle(0x333333, 0.5);
+      g.fillRect(kx - 30, ky + 22, 60, 6);
+      g.fillStyle(0x00cc44, 1.0);
+      g.fillRect(kx - 30, ky + 22, 60, 6); // full HP initially
+    }
 
     // --- Interactive click zone for placement ---
     if (interactive) {
