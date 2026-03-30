@@ -6,6 +6,7 @@ import { UNIT_DEFS } from '../unitDefs';
 import { getWaveEnemies } from '../systems/WaveSpawner';
 import { tickMovement } from '../systems/MovementSystem';
 import { tickCombat } from '../systems/CombatSystem';
+import { MAP_ALPHA } from '../../../shared/src/index';
 
 interface PlaceUnitMsg {
   type: string;
@@ -13,14 +14,7 @@ interface PlaceUnitMsg {
   row: number;
 }
 
-const MAP_CONFIG = {
-  cols: 12,
-  rows: 20,
-  spawnRow: 0,
-  exitRow: 19,
-  lanes: [{ id: 'left', col: 3 }, { id: 'right', col: 8 }],
-  buildRows: { start: 1, end: 18 },
-};
+const MAP = MAP_ALPHA;
 
 const TICK_RATE = 20; // Hz
 const TICK_MS = 1000 / TICK_RATE;
@@ -55,9 +49,14 @@ export class GameRoom extends Room<GameState> {
         return;
       }
 
-      // Validate placement bounds
-      if (message.col < 0 || message.col > MAP_CONFIG.cols - 1 ||
-          message.row < MAP_CONFIG.buildRows.start || message.row > MAP_CONFIG.buildRows.end) {
+      // Validate placement bounds — only 'lane' cells are buildable
+      const cell = MAP.cells[message.row]?.[message.col];
+      if (!cell || cell !== 'lane') {
+        client.send('error', { message: 'Can only place units in lane corridors' });
+        return;
+      }
+      // Further restrict to lane rows (not wall-opening rows 3/18)
+      if (message.row < MAP.laneRows.start || message.row > MAP.laneRows.end) {
         client.send('error', { message: 'Invalid placement position' });
         return;
       }
@@ -163,7 +162,7 @@ export class GameRoom extends Room<GameState> {
 
     // Spawn one wave of enemies per player lane
     const waveEnemies = getWaveEnemies(this.state.wave);
-    const lane = MAP_CONFIG.lanes[0]; // single lane for alpha map
+    const lane = MAP.lanes[0]; // primary lane (left)
 
     // Each player gets their own set of enemies marching down their lane
     this.state.players.forEach((_player, sessionId) => {
@@ -172,9 +171,9 @@ export class GameRoom extends Room<GameState> {
         unit.id = `${sessionId}_${def.id}`;
         unit.type = def.type;
         unit.ownerId = sessionId;
-        unit.col = lane.col;
-        unit.row = MAP_CONFIG.spawnRow;
-        unit.x = lane.col;
+        unit.col = lane.spawnCol;
+        unit.row = MAP.spawnRows.start;
+        unit.x = lane.spawnCol;
         unit.y = -(i * 1.5); // stagger: enter grid top-to-bottom
         unit.hp = def.hp;
         unit.maxHp = def.maxHp;
@@ -198,7 +197,7 @@ export class GameRoom extends Room<GameState> {
 
   private gameTick(deltaSec: number): void {
     // 1. Movement — get leaked unit IDs
-    const leaked = tickMovement(this.state, deltaSec, MAP_CONFIG.exitRow);
+    const leaked = tickMovement(this.state, deltaSec, MAP.exitRows.start);
 
     // 2. Process leaks — each leaked unit deals 1 damage to a player's kingHp
     for (const enemyId of leaked) {

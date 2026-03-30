@@ -1,16 +1,16 @@
 import Phaser from 'phaser';
 import { Client, Room } from 'colyseus.js';
-import mapAlpha from '../config/maps/map-alpha.json';
 import survivorsConfig from '../config/races/survivors.json';
 import mechanicumConfig from '../config/races/mechanicum.json';
-import type { MapConfig, UnitDefinition, RaceConfig } from '@sbtd/shared';
+import type { UnitDefinition, RaceConfig, CellType } from '@sbtd/shared';
+import { MAP_ALPHA } from '@sbtd/shared';
 
-const MAP = mapAlpha as MapConfig;
+const MAP = MAP_ALPHA;
 // Layout: canvas 1280×720
-// Grid: 12 cols × 20 rows at CELL=28 → 336×560px per grid
+// Grid: 14 cols × 24 rows at CELL=24 → 336×576px per grid
 // Two grids side by side with gap: 30 + 336 + 28gap + 336 = 730px (fits)
-// HUD below grids: rows start at 36+560=596, leaving 124px for HUD
-const CELL = 28;
+// HUD below grids: 32 + 576 = 608, leaving 112px for HUD
+const CELL = 24;
 const MAP_OFFSET_X_LEFT = 30;
 const MAP_OFFSET_X_RIGHT = 394;   // 30 + 336 + 28
 const MAP_OFFSET_Y = 32;
@@ -131,60 +131,92 @@ export class GameScene extends Phaser.Scene {
 
   private drawGrid(ox: number, oy: number, interactive: boolean): void {
     const g = this.add.graphics();
+    const totalW = MAP.cols * CELL;
+    const totalH = MAP.rows * CELL;
 
-    // Background
-    g.fillStyle(0x111122, 1);
-    g.fillRect(ox, oy, MAP.cols * CELL, MAP.rows * CELL);
+    // Cell colours by type
+    const CELL_COLORS: Record<CellType, { fill: number; alpha: number }> = {
+      wall:        { fill: 0x1a1a2e, alpha: 1.0 },
+      spawn:       { fill: 0x221100, alpha: 1.0 },
+      lane:        { fill: 0x0d1b2a, alpha: 1.0 },
+      lane_closed: { fill: 0x0d1b2a, alpha: 0.4 },
+      exit:        { fill: 0x1a0022, alpha: 1.0 },
+    };
 
-    // Spawn row highlight (top)
-    g.fillStyle(0xff2200, 0.15);
-    g.fillRect(ox, oy + MAP.spawnRow * CELL, MAP.cols * CELL, CELL);
-
-    // Exit row highlight (bottom)
-    g.fillStyle(0xaa00ff, 0.15);
-    g.fillRect(ox, oy + MAP.exitRow * CELL, MAP.cols * CELL, CELL);
-
-    // Build zone highlight
-    g.fillStyle(0x002244, 0.3);
-    g.fillRect(
-      ox,
-      oy + MAP.buildRows.start * CELL,
-      MAP.cols * CELL,
-      (MAP.buildRows.end - MAP.buildRows.start + 1) * CELL,
-    );
-
-    // Grid lines
-    g.lineStyle(1, 0x223344, 0.6);
-    for (let col = 0; col <= MAP.cols; col++) {
-      g.lineBetween(ox + col * CELL, oy, ox + col * CELL, oy + MAP.rows * CELL);
-    }
-    for (let row = 0; row <= MAP.rows; row++) {
-      g.lineBetween(ox, oy + row * CELL, ox + MAP.cols * CELL, oy + row * CELL);
-    }
-
-    // Border
-    g.lineStyle(2, 0x334466, 1.0);
-    g.strokeRect(ox, oy, MAP.cols * CELL, MAP.rows * CELL);
-
-    // Lane indicators (small arrows)
-    MAP.lanes.forEach((lane: { id: string; col: number }) => {
-      const lx = ox + lane.col * CELL + CELL / 2;
-      for (let r = 2; r < MAP.rows - 2; r += 3) {
-        const ly = oy + r * CELL + CELL / 2;
-        g.fillStyle(0xffffff, 0.15);
-        g.fillTriangle(lx, ly - 5, lx + 5, ly + 5, lx - 5, ly + 5);
+    // Draw each cell
+    for (let r = 0; r < MAP.rows; r++) {
+      for (let c = 0; c < MAP.cols; c++) {
+        const cellType = MAP.cells[r][c];
+        const style = CELL_COLORS[cellType];
+        g.fillStyle(style.fill, style.alpha);
+        g.fillRect(ox + c * CELL, oy + r * CELL, CELL, CELL);
       }
-      g.fillStyle(0xffffff, 0.05);
-      g.fillRect(ox + lane.col * CELL, oy, CELL, MAP.rows * CELL);
+    }
+
+    // Subtle zone overlays
+    // Spawn zone glow
+    g.fillStyle(0xff2200, 0.08);
+    g.fillRect(ox, oy + MAP.spawnRows.start * CELL, totalW,
+      (MAP.spawnRows.end - MAP.spawnRows.start + 1) * CELL);
+
+    // Exit zone (King's Chamber) glow
+    g.fillStyle(0xaa00ff, 0.08);
+    g.fillRect(ox, oy + MAP.exitRows.start * CELL, totalW,
+      (MAP.exitRows.end - MAP.exitRows.start + 1) * CELL);
+
+    // Lane buildable zone highlight
+    g.fillStyle(0x0044aa, 0.08);
+    g.fillRect(ox, oy + MAP.laneRows.start * CELL, totalW,
+      (MAP.laneRows.end - MAP.laneRows.start + 1) * CELL);
+
+    // Grid lines (only on lane cells for clean look)
+    g.lineStyle(1, 0x223344, 0.3);
+    for (let c = 0; c <= MAP.cols; c++) {
+      g.lineBetween(ox + c * CELL, oy, ox + c * CELL, oy + totalH);
+    }
+    for (let r = 0; r <= MAP.rows; r++) {
+      g.lineBetween(ox, oy + r * CELL, ox + totalW, oy + r * CELL);
+    }
+
+    // Wall borders — thicker lines around walls for definition
+    g.lineStyle(1, 0x334466, 0.6);
+    for (let r = 0; r < MAP.rows; r++) {
+      for (let c = 0; c < MAP.cols; c++) {
+        if (MAP.cells[r][c] !== 'wall') continue;
+        const x = ox + c * CELL;
+        const y = oy + r * CELL;
+        g.strokeRect(x, y, CELL, CELL);
+      }
+    }
+
+    // Outer border
+    g.lineStyle(2, 0x334466, 1.0);
+    g.strokeRect(ox, oy, totalW, totalH);
+
+    // Lane direction arrows (pointing down into lanes)
+    MAP.lanes.forEach((lane) => {
+      const lx = ox + lane.spawnCol * CELL + CELL / 2;
+      for (let r = MAP.laneRows.start; r <= MAP.laneRows.end; r += 3) {
+        const ly = oy + r * CELL + CELL / 2;
+        g.fillStyle(0xffffff, 0.1);
+        g.fillTriangle(lx, ly - 4, lx + 4, ly + 4, lx - 4, ly + 4);
+      }
     });
+
+    // Zone labels
+    const labelStyle = { fontFamily: 'monospace', fontSize: '9px', color: '#ffffff' };
+    this.add.text(ox + totalW / 2, oy + CELL, 'SPAWN', { ...labelStyle, color: '#ff4422' })
+      .setOrigin(0.5).setAlpha(0.5);
+    this.add.text(ox + totalW / 2, oy + (MAP.exitRows.start + 2) * CELL, "KING'S CHAMBER",
+      { ...labelStyle, color: '#aa44ff' }).setOrigin(0.5).setAlpha(0.5);
 
     // Interactive click zone for my grid
     if (interactive) {
       const hitZone = this.add.rectangle(
-        ox + (MAP.cols * CELL) / 2,
-        oy + (MAP.rows * CELL) / 2,
-        MAP.cols * CELL,
-        MAP.rows * CELL,
+        ox + totalW / 2,
+        oy + totalH / 2,
+        totalW,
+        totalH,
         0x000000, 0,
       ).setInteractive();
 
@@ -205,8 +237,9 @@ export class GameScene extends Phaser.Scene {
       this.statusText.setText('Can only place units during build phase');
       return;
     }
-    if (row < MAP.buildRows.start || row > MAP.buildRows.end) {
-      this.statusText.setText('Can only place in the build zone');
+    const cell = MAP.cells[row]?.[col];
+    if (!cell || cell !== 'lane' || row < MAP.laneRows.start || row > MAP.laneRows.end) {
+      this.statusText.setText('Can only place in lane corridors');
       return;
     }
 
@@ -219,11 +252,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private buildHUD(width: number, height: number): void {
-    // Grid bottom: MAP_OFFSET_Y + rows*CELL = 32 + 20*28 = 592
-    // HUD row 1: y=598  (gold, kingHP, phase, timer, wave, vote button)
-    // HUD row 2: y=620  (status text)
-    // HUD row 3: y=638  (unit bar, 72px tall → bottom at 710, within 720)
-    const gridBottom = MAP_OFFSET_Y + MAP.rows * CELL; // 592
+    // Grid bottom: MAP_OFFSET_Y + rows*CELL = 32 + 24*24 = 608
+    // HUD row 1: y=614  (gold, kingHP, phase, timer, wave, vote button)
+    // HUD row 2: y=634  (status text)
+    // HUD row 3: y=650  (unit bar, ~66px tall → bottom at 716, within 720)
+    const gridBottom = MAP_OFFSET_Y + MAP.rows * CELL; // 608
     const row1 = gridBottom + 6;   // 598
     const row2 = gridBottom + 26;  // 618
     const unitBarY = gridBottom + 44; // 636

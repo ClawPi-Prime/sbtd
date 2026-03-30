@@ -34,9 +34,13 @@ export const DAMAGE_TABLE: Record<AttackType, Record<ArmorType, number>> = {
   chaos:  { light: 1.0, medium: 1.0, heavy: 1.0, arcane: 1.0, unarmored: 1.0, structure: 1.0 },
 };
 
+export type CellType = 'wall' | 'spawn' | 'lane' | 'lane_closed' | 'exit';
+
 export interface LaneConfig {
   id: string;
-  col: number;
+  colStart: number;
+  colEnd: number;
+  spawnCol: number;   // center column where enemies enter
 }
 
 export interface MapConfig {
@@ -45,9 +49,10 @@ export interface MapConfig {
   cols: number;
   rows: number;
   lanes: LaneConfig[];
-  spawnRow: number;
-  exitRow: number;
-  buildRows: { start: number; end: number };
+  spawnRows: { start: number; end: number };
+  laneRows: { start: number; end: number };
+  exitRows: { start: number; end: number };
+  cells: CellType[][];  // [row][col]
 }
 
 export interface UnitDefinition {
@@ -98,3 +103,5 @@ export interface UnitStateSnapshot {
   maxHp: number;
   alive: boolean;
 }
+
+export { MAP_ALPHA } from './maps';
